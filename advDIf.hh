@@ -7,9 +7,9 @@
 // L,W,H are x,y,z direction array length
 
 double initializeC(int i, int j, int k); // return VALUE
-double initializeUx(int i, int j, int k, double dx);
-double initializeUy(int i, int j, int k, double dx);
-double initializeUz(int i, int j, int k, double dx);
+double initializeUx(int i, int j, int k, double dx, int L, int W, int H);
+double initializeUy(int i, int j, int k, double dx, int L, int W, int H);
+double initializeUz(int i, int j, int k, double dx, int L, int W, int H);
 
 bool isBoundary(int i, int j, int k, int L, int W, int H); // given index and bound
 
