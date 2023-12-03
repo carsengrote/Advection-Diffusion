@@ -6,21 +6,30 @@
 // i,j,k are x,y,z direction index
 // L,W,H are x,y,z direction array length
 
-void start(double LL, double WW, double HH, double dx);
+void start(double LL, double WW, double HH, double dx, double T); 
 std::array<double, 3> convert(int i, int j, int k, double dx);
 
 double initializeC(int i, int j, int k); // return VALUE
-double initializeUx(int i, int j, int k);
-double initializeUy(int i, int j, int k);
-double initializeUz(int i, int j, int k);
+double initializeUx(int i, int j, int k, double LL, double HH);
+double initializeUy(int i, int j, int k, double LL, double HH);
+double initializeUz(int i, int j, int k, double LL, double HH);
+
+double CFL(double dx, double ***ux, double ***uy, double ***uz);
 
 bool isBoundary(int i, int j, int k); // given index and bound
+void enforceBoundary (double ***c);
 
-double getC(int i, int j, int k);
+double getC(int i, int j, int k); 
 std::array<double, 3> getU(int i, int j, int k); // return ux, uy, uz at one point
 
-double updateC(int i, int j, int k, double dx, double dt);
+void updateC(double *** c, double *** nextC, double *** ux, double *** uy, double *** uz, double dx, double dt);
 
-double CFL(double dx);
+double *** allocate3DArray();
+void deallocate3DArray(double ***arr);
+void process3DArray(double ***arr);
+void computeC(double ***c, double dx);
+void computeUx(double ***ux, double dx, double LL, double HH);
+void computeUy(double ***uy, double dx, double LL, double HH);
+void computeUz(double ***uz, double dx, double LL, double HH);
 
 #endif
