@@ -8,9 +8,21 @@ int L;
 int W;
 int H;
 // Ub for constant term for u function
-double Ub = 0.01;
+double Ub = 1;
 // D for diffusion term
 double D = 0.01;
+
+// Used to print out a vertical cross section of the conentration
+void printVertical(double *** c){
+   int  i = int(L/2);
+   for (int k = H-1; k > -1; k--){
+       for (int j = 0; j < W; j++){
+           printf("|%f|", c[i][j][k]);
+       }
+       printf("\n");
+   }
+
+}
 
 int main()
 {
@@ -27,49 +39,70 @@ int main()
 
 void start(double LL, double WW, double HH, double dx, double T)
 {
-    double dt = CFL(dx); // How?
 
-    L = int(LL / dx) + 1; // L is the number of points, and has both sides boundary points and no ghost nodes
-    W = int(WW / dx) + 1;
-    H = int(HH / dx) + 1;
+    L = int(LL / dx) + 2; // L is number of points, + 2 points for ghost node on each side
+    W = int(WW / dx) + 2;
+    H = int(HH / dx) + 2;
     // test input:
     // std::cout << "L is: " << L << "W is: " << W << "H is: " << H << "dx is: " << dx << std::endl;
 
     double ***c = allocate3DArray();
+    // We need two arrays for keeping track of the concentration because we
+    // can't edit it while we're calculating the concentration at the next time
+    // step
+    double ***nextC = allocate3DArray();
     computeC(c, dx);
+    enforceBoundary(c);
     // test c initialization:
-    // process3DArray(c);
+    //process3DArray(c);
 
     double ***ux = allocate3DArray();
     double ***uy = allocate3DArray();
     double ***uz = allocate3DArray();
-    computeUx(ux, dx);
-    computeUy(uy, dx);
-    computeUz(uz, dx);
+    computeUx(ux, dx, LL, HH);
+    computeUy(uy, dx, LL, HH);
+    computeUz(uz, dx, LL, HH);
     // test u initialization:
     // process3DArray(ux);
     // process3DArray(uy);
-    // process3DArray(uz);
+    //process3DArray(uz);
+    double dt = CFL(dx,ux,uy,uz);
 
     double t_total = 0;
     while (t_total < T)
     {
-        updateC(c, ux, uy, uz, dx, dt);
+        updateC(c, nextC, ux, uy, uz, dx, dt);
         t_total += dt;
     }
 }
 
-double CFL(double dx)
+double CFL(double dx, double ***ux, double ***uy, double *** uz)
 {
-    return dx * dx / 10;
+    
+    // Need to find largest velocity among all the cells
+    double maxU = 0;
+    double U;
+    for (int i = 0; i < L; i++){
+        for (int j = 0; j < W; j++){
+            for (int k = 0; k < H; k++){
+                U = std::sqrt(ux[i][j][k]*ux[i][j][k] +  uy[i][j][k]*uy[i][j][k] + uz[i][j][k]*uz[i][j][k]);
+                if (U > maxU){
+                    maxU = U;
+                }
+            }
+        }
+    }
+
+    //printf("adv CLF: %f , dif CFL: %f\n",dx/maxU,(dx*dx)/(2*D));
+    return std::min(dx/maxU, (dx*dx)/(2*D));
 }
 
 std::array<double, 3> convert(int i, int j, int k, double dx) // if I only use it once, i can pass value back, and it'll be deleted automatically
 {
     std::array<double, 3> coord;
-    double x = (double(i) - L / 2) * dx;
-    double y = (double(j) - W / 2) * dx;
-    double z = (double(k) - (H - 1)) * dx;
+    double x = (double(i) - L / 2) * dx + (1/2)*dx;
+    double y = (double(j) - W / 2) * dx + (1/2)*dx;
+    double z = (double(k) - (H - 1)) * dx - (1/2)*dx;
     coord = {x, y, z};
     // test convert: it looked good to me: I run it on a 4*4*4 with dx=1 case, and it's ideal
     // std::cout << "right: " << x << y << z << std::endl;
@@ -87,7 +120,29 @@ void enforceBoundary(double ***c)
     {
         for (int j = 0; j < W; j++)
         {
-            c[i][j][H - 1] = 0;
+            c[i][j][H - 1] = 0; // Surface concentration 0
+            
+            for (int k = 0; k < H - 1; k++)
+            {
+               // Zero flux at boundaries, ghost nodes are at 0 and array
+               // length - 1
+               if(i == 0){
+                  c[i][j][k] = c[i+1][j][k];
+               }
+               if(i == L - 1){
+                  c[i][j][k] = c[i-1][j][k];
+               }
+               if (j == 0){
+                  c[i][j][k] = c[i][j+1][k];
+               }
+               if (j == W - 1){
+                  c[i][j][k] = c[i][j-1][k];
+               }
+               if (k == 0){
+                  c[i][j][k] = c[i][j][k+1];
+               }
+
+            }
         }
     }
 }
@@ -99,10 +154,10 @@ double initializeC(int i, int j, int k, double dx)
 
     // why do I define a? bc if you dont use ijk, there is compile error; I used the first line of this file to compile
     int a = (i + j + k) * dx * 0;
-    return 0.1 + a; // const for now;
+    return 0.5 + a; // const for now;
 }
 
-double initializeUx(int i, int j, int k, double dx)
+double initializeUx(int i, int j, int k, double dx, double LL, double HH)
 {
     std::array<double, 3> coord = convert(i, j, k, dx);
     double x = coord[0];
@@ -111,7 +166,7 @@ double initializeUx(int i, int j, int k, double dx)
     double z = coord[2];
 
     // fuck it, in notes, we put L as height and H is the xy plane dimension; in the code we flipped them; be extra caustious here
-    double ur = Ub * sin(M_PI * r / L) * sin(M_PI * z / H);
+    double ur = Ub * sin(M_PI * r / LL) * cos(M_PI * z / HH);
     double ux;
     if (r < dx / 2) // handle r=0 case
     {
@@ -124,8 +179,9 @@ double initializeUx(int i, int j, int k, double dx)
     return ux;
 }
 
-double initializeUy(int i, int j, int k, double dx)
+double initializeUy(int i, int j, int k, double dx, double LL, double HH)
 {
+
     std::array<double, 3> coord = convert(i, j, k, dx);
     double x = coord[0];
     double y = coord[1];
@@ -133,7 +189,7 @@ double initializeUy(int i, int j, int k, double dx)
     double z = coord[2];
 
     // fuck it, in notes, we put L as height and H is the xy plane dimension; in the code we flipped them; be extra caustious here
-    double ur = Ub * sin(M_PI * r / L) * sin(M_PI * z / H);
+    double ur = Ub * sin(M_PI * r / LL) * sin(M_PI * z / HH);
     double uy;
     if (r < dx / 2) // handle r=0 case
     {
@@ -146,22 +202,22 @@ double initializeUy(int i, int j, int k, double dx)
     return uy;
 }
 
-double initializeUz(int i, int j, int k, double dx)
+double initializeUz(int i, int j, int k, double dx, double LL, double HH)
 {
     std::array<double, 3> coord = convert(i, j, k, dx);
     double r = std::sqrt(std::pow(coord[0], 2) + std::pow(coord[1], 2)); // sqrt(x^2+y^2)
     double z = coord[2];
 
     // fuck it, in notes, we put L as height and H is the xy plane dimension; in the code we flipped them; be extra caustious here
-    double term1 = -Ub * H * cos(M_PI * r / L) * sin(M_PI * z / H);
+    double term1 = -Ub * (HH/LL) * cos(M_PI * r / LL) * sin(M_PI * z / HH);
     double term2 = 0;
     if (r < dx / 2) // handle r=0 case
     {
-        term2 = -Ub * H / L * sin(M_PI * z / H); // if r=0, we have a sinc function, so it's 1; it's H/L instead of L/H because of notation definition
+        term2 = -Ub * HH * sin(M_PI * z / HH); // if r=0, we have a sinc function, so it's 1; it's H/L instead of L/H because of notation definition
     }
     else
     {
-        term2 = -Ub * 1 / (M_PI * r) * (H * sin(M_PI * r / L)) * sin(M_PI * z / H);
+        term2 = -Ub * (1 / (M_PI * r)) * (HH * sin(M_PI * r / LL)) * sin(M_PI * z / HH);
     }
     double uz = term1 + term2;
     return uz;
@@ -185,9 +241,6 @@ std::array<double, 3> getU(double ***ux, double ***uy, double ***uz, int i, int 
 
 double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i, int j, int k, double dx, double dt)
 {
-    double c_center = getC(c, i, j, k);
-    std::array<double, 3> u_center = getU(ux, uy, uz, i, j, k);
-
     // xyz direction advection and diffusion
     double x_ad;
     double y_ad;
@@ -199,85 +252,65 @@ double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i
     double total_ad;
     double total_df;
 
-    // u_x_{i+1} and c_x_{i+1}
-    if (i + 1 < L)
-    {
-        std::array<double, 3> u_west = getU(ux, uy, uz, i + 1, j, k);
-        double c_west = getC(c, i + 1, j, k);
-        x_ad = u_west[0] * c_west - u_center[0] * c_center; //[0] because of x-component
+    std::array<double,3> u_east = getU(ux,uy,uz,i+1,j,k);
+    double c_east = getC(c,i+1,j,k);
+
+    std::array<double,3> u_west = getU(ux,uy,uz,i-1,j,k);
+    double c_west = getC(c,i-1,j,k);
+
+    x_ad = u_east[0]*c_east - u_west[0]*c_west;
+
+    std::array<double,3> u_north = getU(ux,uy,uz,i,j+1,k);
+    double c_north = getC(c,i,j+1,k);
+    std::array<double,3> u_south = getU(ux,uy,uz,i,j-1,k);
+    double c_south = getC(c,i,j-1,k);
+    
+    y_ad = u_north[1]*c_north - u_south[1]*c_south;
+
+    std::array<double,3> u_top = getU(ux,uy,uz,i,j,k+1);
+    double c_top = getC(c,i,j,k+1);
+    std::array<double,3> u_bot = getU(ux,uy,uz,i,j,k-1);
+    double c_bot = getC(c,i,j,k-1);
+
+    z_ad = u_top[2]*c_top - u_bot[2]*c_bot;
+    
+    total_ad = (-dt / (2 * dx)) * (x_ad + y_ad + z_ad);
+
+    
+    x_df = -getC(c, i - 1, j, k) + 2 * getC(c, i, j, k) - getC(c, i + 1, j, k);
+
+    y_df = -getC(c, i, j - 1, k) + 2 * getC(c, i, j, k) - getC(c, i, j + 1, k);
+
+    z_df = -getC(c, i, j, k - 1) + 2 * getC(c, i, j, k) - getC(c, i, j, k + 1);
+
+    
+    total_df = -D * (dt / (2 * dx * dx)) * (x_df + y_df + z_df);
+    
+    // Can't have negative concentration
+    if (c[i][j][k] + total_ad + total_df < 0){
+        return 0;
+    }else{
+        return c[i][j][k] + total_ad + total_df;
     }
-    else
-    {
-        x_ad = 0; // BC requires advection to be zero
-    }
-
-    // u_y_{i+1} and c_y_{i+1}
-    if (j + 1 < W)
-    {
-        std::array<double, 3> u_south = getU(ux, uy, uz, i, j + 1, k);
-        double c_south = getC(c, i, j + 1, k);
-        y_ad = u_south[1] * c_south - u_center[1] * c_center; //[1] because of y-component
-    }
-    else
-    {
-        y_ad = 0; // BC requires advection to be zero
-    }
-
-    // u_z_{i+1} and c_z_{i+1}
-    if (k + 1 < H - 1) // This is we need more thinking: since top layer is just zero, probabaly we are just interested in second layer at the top?
-    {
-        std::array<double, 3> u_top = getU(ux, uy, uz, i, j, k + 1);
-        double c_top = getC(c, i, j, k + 1);
-        z_ad = u_top[2] * c_top - u_center[2] * c_center; //[2] because of z-component
-    }
-    else
-    {
-        z_ad = c_center; // This is we need more thinking: at second layer to the top, we should get rid of everything since top is just 0
-    }
-
-    total_ad = -dt / (2 * dx) * (x_ad + y_ad + z_ad);
-
-    // c_x_{i-1} and c_x_{i} and c_x_{i+1}
-    if (i == 0)
-        x_df = -getC(c, i + 1, j, k) + getC(c, i, j, k);
-    else if (i + 1 == L)
-        x_df = -getC(c, i - 1, j, k) + getC(c, i, j, k);
-    else // interior points
-        x_df = -getC(c, i - 1, j, k) + 2 * getC(c, i, j, k) - getC(c, i + 1, j, k);
-
-    // c_z_{i-1} and c_z_{i} and c_z_{i+1}
-    if (j == 0)
-        y_df = -getC(c, i, j + 1, k) + getC(c, i, j, k);
-    else if (j + 1 == W)
-        y_df = -getC(c, i, j - 1, k) + getC(c, i, j, k);
-    else // interior points
-        y_df = -getC(c, i, j - 1, k) + 2 * getC(c, i, j, k) - getC(c, i, j + 1, k);
-
-    // c_y_{i-1} and c_y_{i} and c_y_{i+1}
-    if (k == 0)
-        z_df = -getC(c, i, j, k + 1) + getC(c, i, j, k);
-    else if (k + 1 == H)
-        z_df = -getC(c, i, j, k - 1) + getC(c, i, j, k);
-    else // interior points
-        z_df = -getC(c, i, j, k - 1) + 2 * getC(c, i, j, k) - getC(c, i, j, k + 1);
-
-    total_df = -D * dt / (2 * dx * dx) * (x_df + y_df + z_df);
-
-    return c[i][j][k] + total_ad + total_df;
 }
 
-void updateC(double ***c, double ***ux, double ***uy, double ***uz, double dx, double dt)
+void updateC(double ***c, double ***nextC, double ***ux, double ***uy, double ***uz, double dx, double dt)
 {
-    for (int i = 0; i < L; i++)
+    for (int i = 1; i < L-1; i++)
     {
-        for (int j = 0; j < W; j++)
+        for (int j = 1; j < W-1; j++)
         {
-            for (int k = 0; k < H; k++)
+            for (int k = 1; k < H-1; k++)
             {
-                c[i][j][k] = updateC_cell(c, ux, uy, uz, i, j, k, dx, dt);
+                
+                nextC[i][j][k] = updateC_cell(c, ux, uy, uz, i, j, k, dx, dt);
             }
         }
     }
+ 
+    double ***temp = c;
+    c = nextC;
+    nextC = temp;
     enforceBoundary(c);
 }
 
@@ -335,57 +368,38 @@ void computeC(double ***c, double dx)
                 c[i][j][k] = initializeC(i, j, k, dx);
 }
 
-void computeUx(double ***ux, double dx)
+void computeUx(double ***ux, double dx, double LL, double HH)
 {
     for (int i = 0; i < L; i++)
         for (int j = 0; j < W; j++)
             for (int k = 0; k < H; k++)
-                ux[i][j][k] = initializeUx(i, j, k, dx);
+                if(isBoundary(i,j,k)){
+                    ux[i][j][k] = 0;
+                }else{
+                    ux[i][j][k] = initializeUx(i, j, k, dx, LL, HH);
+                }
 }
 
-void computeUy(double ***uy, double dx)
+void computeUy(double ***uy, double dx, double LL, double HH)
 {
     for (int i = 0; i < L; i++)
         for (int j = 0; j < W; j++)
             for (int k = 0; k < H; k++)
-                uy[i][j][k] = initializeUy(i, j, k, dx);
+                if(isBoundary(i,j,k)){
+                    uy[i][j][k] = 0;
+                }else{
+                    uy[i][j][k] = initializeUy(i, j, k, dx, LL, HH);
+                }
 }
 
-void computeUz(double ***uz, double dx)
+void computeUz(double ***uz, double dx, double LL, double HH)
 {
     for (int i = 0; i < L; i++)
         for (int j = 0; j < W; j++)
             for (int k = 0; k < H; k++)
-                uz[i][j][k] = initializeUz(i, j, k, dx);
-}
-
-
-
-
-
-double updateC_Carson(int i,int j, int dt, double dx, double k, c,u,D){
-
-  cXleft = c[i-1][j][k];
-  uXleft = u[i-1][j][k];
-  cXright = c[i+1][j][k];
-  uXright = u[i+1][j][k];
-
-  cYleft = c[i][j-1][k];
-  uYleft = u[i][j-1][k];
-  cYright = c[i][j+1][k];
-  uYright = u[i][j+1][k];
-
-  cZleft = c[i][j][k-1];
-  uZleft = u[i][j][k-1];
-  cZright = c[i][j][k+1];
-  uZright = u[i][j][k+1];
-
-  cCenter = getC(i,j,k);
-
-  xTotalFlux  = ((dt)/(2*dx))*(uXright*cXright - uXleft*cXleft) + ((D*dt)/(dx**2))*(2*cCenter - cXleft - cXright); 
-  yTotalFlux  = ((dt)/(2*dx))*(uLright*cLright - uLleft*cLleft) + ((D*dt)/(dx**2))*(2*cCenter - cLleft - cLright); 
-  zTotalFlux  = ((dt)/(2*dx))*(uZright*cZright - uZleft*cZleft) + ((D*dt)/(dx**2))*(2*cCenter - cZleft - cZright); 
-
-  return cCenter - xTotalFlux - yTotalFlux - zTotalFlux;
-
+                if(isBoundary(i,j,k)){
+                    uz[i][j][k] = 0;
+                }else{
+                    uz[i][j][k] = initializeUz(i, j, k, dx, LL, HH);
+                }  
 }
