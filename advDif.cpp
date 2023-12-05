@@ -4,11 +4,6 @@
 #include <iostream>
 #include <cmath>
 
-struct ptrStruct{
-  double *** newC;
-  double *** newNextC;
-};
-
 // number of points of each direction; L for x, W for y, and H for z
 int L;
 int W;
@@ -65,7 +60,10 @@ void start(double LL, double WW, double HH, double dx, double T)
     // We need two arrays for keeping track of the concentration because we
     // can't edit it while we're calculating the concentration at the next time
     // step
-    double ***nextC = allocate3DArray();
+    double ***cPrime = allocate3DArray();
+    double ***cNext = allocate3DArray();
+    double ***cNextPrime = allocate3DArray();
+
     computeC(c, dx);
     enforceBoundary(c);
     // test c initialization:
@@ -83,16 +81,14 @@ void start(double LL, double WW, double HH, double dx, double T)
     //process3DArray(uy);
     //process3DArray(uz);
     double dt = .5*CFL(dx,ux,uy,uz);
-    double images = T / dt;
-    fprintf(stderr,"Final time: %f, dt: %f, Images: %f, Width pixels: %d, Height pixels: %d\n",T,dt,images,L-2,H-1);
+    int images = std::floor(T / dt)+1;
+    fprintf(stderr,"Final time: %f, dt: %f, Images: %d, Width pixels: %d, Height pixels: %d\n",T,dt,images,L-2,H-1);
     double t_total = 0;
-    struct ptrStruct cPtrs; // Keeping track of the two pointers
-                            // to two 3d arrays
+
+    printVertical(c); // print initial conditions 
     while (t_total < T)
     {
-        cPtrs = updateC(c, nextC, ux, uy, uz, dx, dt);
-        c = cPtrs.newC;
-        nextC = cPtrs.newNextC;
+        c = updateC(c, cPrime, cNext, cNextPrime, ux, uy, uz, dx, dt);
         t_total += dt;
 
         printVertical(c);
@@ -165,7 +161,6 @@ void enforceBoundary(double ***c)
                if (k == 0){
                   c[i][j][k] = c[i][j][k+1];
                }
-
             }
         }
     }
@@ -175,10 +170,9 @@ double initializeC(int i, int j, int k, double dx)
 {
     // std::array<double, 3> coord = convert(i, j, k, dx); // for future position-dependecy initialization
     // std::cout << coord[0] << " " << coord[1] << " " << coord[2] << std::endl;
-
     // why do I define a? bc if you dont use ijk, there is compile error; I used the first line of this file to compile
     int a = (i + j + k) * dx * 0;
-    return 4 + a; // const for now, grams per liter? 
+    return 1+ a; // const for now, grams per liter? 
 }
 
 double initializeUx(int i, int j, int k, double dx, double LL, double HH)
@@ -276,7 +270,7 @@ std::array<double, 3> getU(double ***ux, double ***uy, double ***uz, int i, int 
 }
 /*here comes the big one~~~~~~~~~~~~~~~~ update the c 3d array ~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i, int j, int k, double dx, double dt)
+double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i, int j, int k, double dx)
 {
     // xyz direction advection and diffusion
     double x_ad;
@@ -311,8 +305,7 @@ double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i
 
     z_ad = u_top[2]*c_top - u_bot[2]*c_bot;
     
-    total_ad = (-dt / (2 * dx)) * (x_ad + y_ad + z_ad);
-
+    total_ad = (-1 / (2 * dx)) * (x_ad + y_ad + z_ad);
     
     x_df = -getC(c, i - 1, j, k) + 2 * getC(c, i, j, k) - getC(c, i + 1, j, k);
 
@@ -320,36 +313,46 @@ double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i
 
     z_df = -getC(c, i, j, k - 1) + 2 * getC(c, i, j, k) - getC(c, i, j, k + 1);
 
-    
-    total_df = -D * (dt / (2 * dx * dx)) * (x_df + y_df + z_df);
-    
-    // Can't have negative concentration
-    if (c[i][j][k] + total_ad + total_df < 0){
-        return 0;
-    }else{
-        return c[i][j][k] + total_ad + total_df;
-    }
+    total_df = -D * (1 / (2 * dx * dx)) * (x_df + y_df + z_df);
+
+    return total_ad + total_df;
 }
 
-struct ptrStruct updateC(double ***c, double ***nextC, double ***ux, double ***uy, double ***uz, double dx, double dt)
+double ***  updateC(double ***c, double ***cPrime, double *** cNext, double *** cNextPrime, double ***ux, double ***uy, double ***uz, double dx, double dt)
 {
     for (int i = 1; i < L-1; i++)
     {
         for (int j = 1; j < W-1; j++)
         {
             for (int k = 1; k < H-1; k++)
-            {
-                
-                nextC[i][j][k] = updateC_cell(c, ux, uy, uz, i, j, k, dx, dt);
+            {            
+                cPrime[i][j][k] = updateC_cell(c, ux, uy, uz, i, j, k, dx);
+                cNext[i][j][k] = c[i][j][k] + dt*cPrime[i][j][k];
+                if (cNext[i][j][k] < 0){
+                  cNext[i][j][k] = 0;
+                }
             }
         }
     }
 
-   enforceBoundary(nextC);
-   struct ptrStruct updatedPtrs;
-   updatedPtrs.newC = nextC;
-   updatedPtrs.newNextC = c;
-   return updatedPtrs;
+    enforceBoundary(cNext);
+    for (int i = 1; i < L-1; i++)
+    {
+        for (int j = 1; j < W-1; j++)
+        {
+            for (int k = 1; k < H-1; k++)
+            {
+                cNextPrime[i][j][k] = updateC_cell(cNext, ux, uy, uz, i, j, k, dx);
+                cNext[i][j][k] = cNext[i][j][k] + (dt)*(1.5)*cNextPrime[i][j][k] - (dt)*(.5)*cPrime[i][j][k];
+                if (cNext[i][j][k] < 0){
+                  cNext[i][j][k] = 0;
+                } 
+            }
+        }
+    }
+
+    enforceBoundary(cNext);
+    return cNext;
 }
 
 /****below are generated by chatgpt or some wrapper functions, just take it brief look; they're not very important****/
