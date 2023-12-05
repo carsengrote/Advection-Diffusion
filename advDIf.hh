@@ -22,7 +22,7 @@ void enforceBoundary (double ***c);
 double getC(int i, int j, int k);
 std::array<double, 3> getU(int i, int j, int k); // return ux, uy, uz at one point
 
-struct ptrStruct updateC(double *** c, double *** nextC, double *** ux, double *** uy, double *** uz, double dx, double dt);
+double *** updateC(double *** c, double ***cPrime, double *** cNext, double *** cNextPrime, double *** ux, double *** uy, double *** uz, double dx, double dt);
 
 double *** allocate3DArray();
 void deallocate3DArray(double ***arr);
