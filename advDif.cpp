@@ -3,32 +3,47 @@
 #include "advDif.hh"
 #include <iostream>
 #include <cmath>
+
+struct ptrStruct{
+  double *** newC;
+  double *** newNextC;
+};
+
 // number of points of each direction; L for x, W for y, and H for z
 int L;
 int W;
 int H;
 // Ub for constant term for u function
-double Ub = 1;
+double Ub = 1; // cm per second
 // D for diffusion term
-double D = 0.01;
+double D = 0.0000185; // cm squared per second
 
 // Used to print out a vertical cross section of the conentration
 void printVertical(double *** c){
    int  i = int(L/2);
-   for (int k = H-1; k > -1; k--){
-       for (int j = 0; j < W; j++){
-           printf("|%f|", c[i][j][k]);
+   for (int k = 1; k < H; k++){
+       for (int j = 1; j < W-1; j++){
+           printf("%f ", c[i][j][k]);
        }
        printf("\n");
    }
+   printf("\n");
 
 }
 
-int main()
+int main(int argc,char* argv[])
 {
+    if (argc != 6){
+      exit(0);
+    }
     double LL, WW, HH, dx, T;
-    std::cout << "Enter length, width, height, and dx, and total time: ";
-    std::cin >> LL >> WW >> HH >> dx >> T;
+    //std::cout << "Enter length, width, height, and dx, and total time: ";
+    //std::cin >> LL >> WW >> HH >> dx >> T;
+    LL = atof(argv[1]);
+    WW = atof(argv[2]);
+    HH = atof(argv[3]);
+    dx = atof(argv[4]);
+    T = atof(argv[5]);
     if (LL != WW)
     {
         WW = LL; // We do this because we want to keep xy-plane symmetry; if we have some other u, we can delete this
@@ -40,8 +55,8 @@ int main()
 void start(double LL, double WW, double HH, double dx, double T)
 {
 
-    L = int(LL / dx) + 2; // L is number of points, + 2 points for ghost node on each side
-    W = int(WW / dx) + 2;
+    L = 2*int(LL / dx) + 2; // L is number of points, + 2 points for ghost node on each side
+    W = 2*int(WW / dx) + 2;
     H = int(HH / dx) + 2;
     // test input:
     // std::cout << "L is: " << L << "W is: " << W << "H is: " << H << "dx is: " << dx << std::endl;
@@ -62,17 +77,25 @@ void start(double LL, double WW, double HH, double dx, double T)
     computeUx(ux, dx, LL, HH);
     computeUy(uy, dx, LL, HH);
     computeUz(uz, dx, LL, HH);
+    
     // test u initialization:
-    // process3DArray(ux);
-    // process3DArray(uy);
+    //process3DArray(ux);
+    //process3DArray(uy);
     //process3DArray(uz);
-    double dt = CFL(dx,ux,uy,uz);
-
+    double dt = .5*CFL(dx,ux,uy,uz);
+    double images = T / dt;
+    fprintf(stderr,"Final time: %f, dt: %f, Images: %f, Width pixels: %d, Height pixels: %d\n",T,dt,images,L-2,H-1);
     double t_total = 0;
+    struct ptrStruct cPtrs; // Keeping track of the two pointers
+                            // to two 3d arrays
     while (t_total < T)
     {
-        updateC(c, nextC, ux, uy, uz, dx, dt);
+        cPtrs = updateC(c, nextC, ux, uy, uz, dx, dt);
+        c = cPtrs.newC;
+        nextC = cPtrs.newNextC;
         t_total += dt;
+
+        printVertical(c);
     }
 }
 
@@ -97,15 +120,16 @@ double CFL(double dx, double ***ux, double ***uy, double *** uz)
     return std::min(dx/maxU, (dx*dx)/(2*D));
 }
 
-std::array<double, 3> convert(int i, int j, int k, double dx) // if I only use it once, i can pass value back, and it'll be deleted automatically
+std::array<double, 3> convert(int i, int j, int k, double dx) // if I only use it once, i can pass value back,
+                                                              // and it'll be deleted automatically
 {
     std::array<double, 3> coord;
-    double x = (double(i) - L / 2) * dx + (1/2)*dx;
-    double y = (double(j) - W / 2) * dx + (1/2)*dx;
-    double z = (double(k) - (H - 1)) * dx - (1/2)*dx;
+    double x = (double(i) - double(L)*.5) * dx + (.5)*dx;
+    double y = (double(j) - double(W)*.5) * dx + (.5)*dx;
+    double z = (double(k) - (double(H)- 1)) * dx + (.5)*dx;
     coord = {x, y, z};
     // test convert: it looked good to me: I run it on a 4*4*4 with dx=1 case, and it's ideal
-    // std::cout << "right: " << x << y << z << std::endl;
+    //std::cout << "right: " << x << ","  << y << "," << z << std::endl;
     return coord;
 }
 
@@ -154,7 +178,7 @@ double initializeC(int i, int j, int k, double dx)
 
     // why do I define a? bc if you dont use ijk, there is compile error; I used the first line of this file to compile
     int a = (i + j + k) * dx * 0;
-    return 0.5 + a; // const for now;
+    return 4 + a; // const for now, grams per liter? 
 }
 
 double initializeUx(int i, int j, int k, double dx, double LL, double HH)
@@ -165,7 +189,8 @@ double initializeUx(int i, int j, int k, double dx, double LL, double HH)
     double r = std::sqrt(x * x + y * y);
     double z = coord[2];
 
-    // fuck it, in notes, we put L as height and H is the xy plane dimension; in the code we flipped them; be extra caustious here
+    // fuck it, in notes, we put L as height and H is the xy plane dimension; 
+    // in the code we flipped them; be extra caustious here
     double ur = Ub * sin(M_PI * r / LL) * cos(M_PI * z / HH);
     double ux;
     if (r < dx / 2) // handle r=0 case
@@ -176,6 +201,11 @@ double initializeUx(int i, int j, int k, double dx, double LL, double HH)
     {
         ux = ur * coord[0] / r; // x/r is the component
     }
+
+    if (r > LL){
+        return (-.1)*ux;
+    }
+
     return ux;
 }
 
@@ -188,7 +218,8 @@ double initializeUy(int i, int j, int k, double dx, double LL, double HH)
     double r = std::sqrt(x * x + y * y);
     double z = coord[2];
 
-    // fuck it, in notes, we put L as height and H is the xy plane dimension; in the code we flipped them; be extra caustious here
+    // fuck it, in notes, we put L as height and H is the xy plane dimension;
+    // in the code we flipped them; be extra caustious here
     double ur = Ub * sin(M_PI * r / LL) * sin(M_PI * z / HH);
     double uy;
     if (r < dx / 2) // handle r=0 case
@@ -199,6 +230,10 @@ double initializeUy(int i, int j, int k, double dx, double LL, double HH)
     {
         uy = ur * coord[1] / r; // y/r is the component
     }
+
+    if (r > LL){
+        return -.1*uy;
+    }
     return uy;
 }
 
@@ -208,12 +243,14 @@ double initializeUz(int i, int j, int k, double dx, double LL, double HH)
     double r = std::sqrt(std::pow(coord[0], 2) + std::pow(coord[1], 2)); // sqrt(x^2+y^2)
     double z = coord[2];
 
-    // fuck it, in notes, we put L as height and H is the xy plane dimension; in the code we flipped them; be extra caustious here
+    // fuck it, in notes, we put L as height and H is the xy plane dimension; 
+    // in the code we flipped them; be extra caustious here
     double term1 = -Ub * (HH/LL) * cos(M_PI * r / LL) * sin(M_PI * z / HH);
     double term2 = 0;
     if (r < dx / 2) // handle r=0 case
     {
-        term2 = -Ub * HH * sin(M_PI * z / HH); // if r=0, we have a sinc function, so it's 1; it's H/L instead of L/H because of notation definition
+        term2 = -Ub * HH * sin(M_PI * z / HH); // if r=0, we have a sinc function, so it's 1; 
+                                               // it's H/L instead of L/H because of notation definition
     }
     else
     {
@@ -294,7 +331,7 @@ double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i
     }
 }
 
-void updateC(double ***c, double ***nextC, double ***ux, double ***uy, double ***uz, double dx, double dt)
+struct ptrStruct updateC(double ***c, double ***nextC, double ***ux, double ***uy, double ***uz, double dx, double dt)
 {
     for (int i = 1; i < L-1; i++)
     {
@@ -307,11 +344,12 @@ void updateC(double ***c, double ***nextC, double ***ux, double ***uy, double **
             }
         }
     }
- 
-    double ***temp = c;
-    c = nextC;
-    nextC = temp;
-    enforceBoundary(c);
+
+   enforceBoundary(nextC);
+   struct ptrStruct updatedPtrs;
+   updatedPtrs.newC = nextC;
+   updatedPtrs.newNextC = c;
+   return updatedPtrs;
 }
 
 /****below are generated by chatgpt or some wrapper functions, just take it brief look; they're not very important****/
@@ -401,5 +439,8 @@ void computeUz(double ***uz, double dx, double LL, double HH)
                     uz[i][j][k] = 0;
                 }else{
                     uz[i][j][k] = initializeUz(i, j, k, dx, LL, HH);
+                    if (k == 1 && uz[i][j][k] < 0){
+                        uz[i][j][k] = 0;
+                    }
                 }  
 }
