@@ -6,7 +6,7 @@
 // i,j,k are x,y,z direction index
 // L,W,H are x,y,z direction array length
 
-void start(double LL, double WW, double HH, double dx, double T);
+void start(double LL, double WW, double HH, double dx, double T); 
 std::array<double, 3> convert(int i, int j, int k, double dx);
 
 double initializeC(int i, int j, int k); // return VALUE
@@ -19,10 +19,10 @@ double CFL(double dx, double ***ux, double ***uy, double ***uz);
 bool isBoundary(int i, int j, int k); // given index and bound
 void enforceBoundary (double ***c);
 
-double getC(int i, int j, int k);
+double getC(int i, int j, int k); 
 std::array<double, 3> getU(int i, int j, int k); // return ux, uy, uz at one point
 
-double *** updateC(double *** c, double ***cPrime, double *** cNext, double *** cNextPrime, double *** ux, double *** uy, double *** uz, double dx, double dt);
+struct ptrStruct updateC(double *** c, double ***cPrime, double ***cPrimeLast, double *** cNext, double *** ux, double *** uy, double *** uz, double dx, double dt, int E); 
 
 double *** allocate3DArray();
 void deallocate3DArray(double ***arr);
