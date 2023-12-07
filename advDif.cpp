@@ -1,8 +1,11 @@
-// g++ -std=c++11 -Wall -Wextra -Werror advDif.cpp -o advDif
+// Need to use actual GNU gcc to compile this code as Apple's
+// alias to gcc, clang, does not support OpenMP
+// g++-13 -fopenmp -std=c++11 -Wall -Wextra advDif.cpp -o advDif
 
 #include "advDif.hh"
 #include <iostream>
 #include <cmath>
+#include<omp.h>
 
 // number of points of each direction; L for x, W for y, and H for z
 int L;
@@ -28,6 +31,7 @@ void printVertical(double *** c){
 
 int main(int argc,char* argv[])
 {
+    omp_set_num_threads(10);
     if (argc != 6){
       exit(0);
     }
@@ -57,9 +61,9 @@ void start(double LL, double WW, double HH, double dx, double T)
     // std::cout << "L is: " << L << "W is: " << W << "H is: " << H << "dx is: " << dx << std::endl;
 
     double ***c = allocate3DArray();
-    // We need two arrays for keeping track of the concentration because we
+    // We need multiple arrays for keeping track of the concentration because we
     // can't edit it while we're calculating the concentration at the next time
-    // step
+    // step, and AB-2 is a multistep method
     double ***cPrime = allocate3DArray();
     double ***cNext = allocate3DArray();
     double ***cNextPrime = allocate3DArray();
@@ -80,7 +84,7 @@ void start(double LL, double WW, double HH, double dx, double T)
     //process3DArray(ux);
     //process3DArray(uy);
     //process3DArray(uz);
-    double dt = .5*CFL(dx,ux,uy,uz);
+    double dt = .9*CFL(dx,ux,uy,uz);
     int images = std::floor(T / dt)+1;
     fprintf(stderr,"Final time: %f, dt: %f, Images: %d, Width pixels: %d, Height pixels: %d\n",T,dt,images,L-2,H-1);
     double t_total = 0;
@@ -98,7 +102,7 @@ void start(double LL, double WW, double HH, double dx, double T)
 double CFL(double dx, double ***ux, double ***uy, double *** uz)
 {
     
-    // Need to find largest velocity among all the cells
+    // Need to find largest flow velocity among all the cells
     double maxU = 0;
     double U;
     for (int i = 0; i < L; i++){
@@ -112,8 +116,9 @@ double CFL(double dx, double ***ux, double ***uy, double *** uz)
         }
     }
 
-    //printf("adv CLF: %f , dif CFL: %f\n",dx/maxU,(dx*dx)/(2*D));
-    return std::min(dx/maxU, (dx*dx)/(2*D));
+    // Returning the smaller CFL condition between advection and diffusion
+    // For small diffusion, advection CFL is normally much smaller
+    return .5*std::min(dx/maxU, (dx*dx)/(2*D));
 }
 
 std::array<double, 3> convert(int i, int j, int k, double dx) // if I only use it once, i can pass value back,
@@ -135,7 +140,8 @@ bool isBoundary(int i, int j, int k)
 }
 
 void enforceBoundary(double ***c)
-{
+{   
+    #pragma omp parallel for num_threads(10) collapse(2)
     for (int i = 0; i < L; i++)
     {
         for (int j = 0; j < W; j++)
@@ -172,7 +178,7 @@ double initializeC(int i, int j, int k, double dx)
     // std::cout << coord[0] << " " << coord[1] << " " << coord[2] << std::endl;
     // why do I define a? bc if you dont use ijk, there is compile error; I used the first line of this file to compile
     int a = (i + j + k) * dx * 0;
-    return 1+ a; // const for now, grams per liter? 
+    return 0.004+ a; // const for now, grams per liter? 
 }
 
 double initializeUx(int i, int j, int k, double dx, double LL, double HH)
@@ -320,6 +326,9 @@ double updateC_cell(double ***c, double ***ux, double ***uy, double ***uz, int i
 
 double ***  updateC(double ***c, double ***cPrime, double *** cNext, double *** cNextPrime, double ***ux, double ***uy, double ***uz, double dx, double dt)
 {
+    // Adam's-Bashforth two step for O(k^2) time accuracy. 
+    // y_{n+2} = y 
+    #pragma omp parallel for num_threads(10) collapse(3)
     for (int i = 1; i < L-1; i++)
     {
         for (int j = 1; j < W-1; j++)
@@ -336,6 +345,8 @@ double ***  updateC(double ***c, double ***cPrime, double *** cNext, double *** 
     }
 
     enforceBoundary(cNext);
+    
+    #pragma omp parallel for num_threads(10) collapse(3)
     for (int i = 1; i < L-1; i++)
     {
         for (int j = 1; j < W-1; j++)
@@ -447,3 +458,4 @@ void computeUz(double ***uz, double dx, double LL, double HH)
                     }
                 }  
 }
+
