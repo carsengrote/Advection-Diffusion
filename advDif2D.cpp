@@ -1,6 +1,6 @@
 // Need to use actual GNU gcc to compile this code as Apple's
 // alias to gcc, clang, does not support OpenMP
-// g++-13 -fopenmp -std=c++11 -Wall -Wextra advDif.cpp -o advDif
+// g++-13 -fopenmp -std=c++11 -Wall -Wextra advDif2D.cpp -o advDif
 
 #include "advDif2D.hh"
 #include <iostream>
@@ -86,10 +86,10 @@ void start(double LL, double HH, double dx, double T)
     double **uz = allocate2DArray();
     computeUx(ux, dx, LL, HH);
     computeUz(uz, dx, LL, HH);
-    
     // test u initialization:
     //process2DArray(ux);
     //process2DArray(uz);
+
     double dt = CFL(dx,ux,uz);
     int images = std::floor(T / dt)+1;
     fprintf(stderr,"Final time: %f, dt: %f, Images: %d, Width pixels: %d, Height pixels: %d\n",T,dt,images,L-2,H-1);
@@ -113,6 +113,7 @@ void start(double LL, double HH, double dx, double T)
         
         printVertical(c);
     }
+    //printf("%f, %f\n",t_total, c[L/2+10][H/2-10]);
 }
 
 double CFL(double dx, double **ux, double ** uz)
@@ -185,7 +186,8 @@ double initializeUx(int i, int k, double dx, double LL, double HH)
     double x = coord[0];
     double z = coord[1];
     double ux;
-    ux = LL * (1/(2*HH)) * (1/((2*N)-1)) * cos((2*N - 1)*(M_PI)*(2*x - LL/2)*(1/LL)) * cos(M_PI*(z/HH));
+    //ux = LL * (1.0/(2.0*HH)) * (1.0/((2.0*N)-1)) * cos((2.0*N - 1.0)*(M_PI)*(2.0*x - LL/2.0)*(1.0/LL)) * cos(M_PI*(z/HH));
+    ux = LL * (1/(2*HH*N)) * cos((2*M_PI*N)*((x+LL/2)/LL) + M_PI/2) * cos((M_PI*z)/HH);
     return ux;
 }
 
@@ -196,7 +198,8 @@ double initializeUz(int i, int k, double dx, double LL, double HH)
     double x = coord[0];
     double z = coord[1];
 
-    double uz = sin((2*N-1)*(2*x - LL/2)*(M_PI/LL)) * sin(M_PI*(z/HH));
+    // double uz = sin((2.0*N-1.0)*(2.0*x - LL/2.0)*(M_PI/LL)) * sin(M_PI*(z/HH));
+    double uz = sin((2*M_PI*N)*((x+LL/2)/LL) + M_PI/2) * sin((z*M_PI)/HH);
     return uz;
 }
 
@@ -354,3 +357,4 @@ void computeUz(double **uz, double dx, double LL, double HH)
                 }
             }  
 }
+
