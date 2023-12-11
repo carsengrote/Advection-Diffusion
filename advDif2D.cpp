@@ -20,7 +20,7 @@ double N; // Number of circulation cells
 // Ub for constant term for u function
 double Ub = 1; // cm per second
 // D for diffusion term
-double D = 0.185; // cm squared per second
+double D = 0.0185; // cm squared per second
 
 // Used to print out a vertical cross section of the conentration
 void printVertical(double **c){
@@ -31,6 +31,16 @@ void printVertical(double **c){
        printf("\n");
    }
    printf("\n");
+}
+
+double avgC(double **c){
+    double sum = 0;
+    for (int i = 1; i < L-1; i++){
+        for (int k = 1; k < H -1; k++){
+            sum = sum + c[i][k];
+        }
+    }
+    return sum/((L-2)*(H-2));
 }
 
 int main(int argc,char* argv[])
@@ -84,7 +94,7 @@ void start(double LL, double HH, double dx, double T)
     int images = std::floor(T / dt)+1;
     fprintf(stderr,"Final time: %f, dt: %f, Images: %d, Width pixels: %d, Height pixels: %d\n",T,dt,images,L-2,H-1);
     
-    double t_total = 0;
+    double t_total = 0.0;
     struct ptrStruct ptrs;
     printVertical(c); // print initial conditions 
     int E = 0; // Switch for Eulers step first
@@ -100,7 +110,7 @@ void start(double LL, double HH, double dx, double T)
         c = ptrs.newC;
         cPrimeLast = ptrs.lastCprime;
         t_total += dt;
-
+        
         printVertical(c);
     }
 }
@@ -122,7 +132,7 @@ double CFL(double dx, double **ux, double ** uz)
 
     // Returning the smaller CFL condition between advection and diffusion
     // For small diffusion, advection CFL is normally much smaller
-    return .5*std::min(dx/maxU, (dx*dx)/(2*D));
+    return .75*std::min(dx/maxU, (dx*dx)/(2*D));
 }
 
 // Given indicies, returns physical x and z coordinates
@@ -203,7 +213,6 @@ std::array<double, 2> getU(double **ux, double **uz, int i, int k)
     u = {x,z};
     return u;
 }
-/*here comes the big one~~~~~~~~~~~~~~~~ update the c 3d array ~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 double updateC_cell(double **c, double **ux, double **uz, int i, int k, double dx)
 {
@@ -245,21 +254,23 @@ double updateC_cell(double **c, double **ux, double **uz, int i, int k, double d
 struct ptrStruct updateC(double **c, double **cPrime, double **cPrimeLast, double **cNext, double **ux, double **uz, double dx, double dt, int Euler)
 {
     
-    double d;
+    double d1,d2;
     if (Euler == 1){
-        d = 1;
+        d1 = 1;
+        d2 = 0;
     }else{
-        d = 1.5;
+        d1 = 1.5;
+        d2 = 0.5;
     }
     // Adam's-Bashforth two step for O(k^2) time accuracy. 
-    // y_{n+2} = y 
+    // y_{n+2} = y_{n+1} + (3/2)dx*f(y_{n+1}) - (1/2)dx*f(y_{n}) 
     #pragma omp parallel for num_threads(10) collapse(2)
     for (int i = 1; i < L-1; i++)
     {
         for (int k = 1; k < H-1; k++)
         {            
             cPrime[i][k] = updateC_cell(c, ux, uz, i, k, dx);
-            cNext[i][k] = c[i][k] + dt*(d)*cPrime[i][k] - (dt)*(.5)*cPrimeLast[i][k];
+            cNext[i][k] = c[i][k] + dt*(d1)*cPrime[i][k] - (dt)*(d2)*cPrimeLast[i][k];
             if (cNext[i][k] < 0){
                 cNext[i][k] = 0;
             }
