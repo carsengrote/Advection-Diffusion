@@ -43,6 +43,16 @@ double avgC(double **c){
     return sum/((L-2)*(H-2));
 }
 
+double totalC(double **c){
+    double sum = 0;
+    for (int i = 1; i < L -1; i++){
+        for (int k = 1; k < H - 1; k++){
+            sum = sum + c[i][k];
+        }
+    }
+    return sum;
+}
+
 int main(int argc,char* argv[])
 {
     omp_set_num_threads(10);
@@ -110,10 +120,11 @@ void start(double LL, double HH, double dx, double T)
         c = ptrs.newC;
         cPrimeLast = ptrs.lastCprime;
         t_total += dt;
-        
+        //printf("%f\n",avgC(c));  
         printVertical(c);
     }
     //printf("%f, %f\n",t_total, c[L/2+10][H/2-10]);
+    
 }
 
 double CFL(double dx, double **ux, double ** uz)
@@ -175,9 +186,11 @@ void enforceBoundary(double **c)
 }
 
 double initializeC(int i, int k, double dx)
-{
+{ 
+    double r = (((double) rand() / (RAND_MAX))*2) - 1; // Random number in
+    r = 0;                                              // [-1,1]
     int a = (i + k) * dx * 0;
-    return 0.004+ a; // const for now, grams per liter? 
+    return 0.004 + 0.004*(0.2)*r + 0*a; // const for now, grams per liter? 
 }
 
 double initializeUx(int i, int k, double dx, double LL, double HH)
@@ -357,4 +370,3 @@ void computeUz(double **uz, double dx, double LL, double HH)
                 }
             }  
 }
-
