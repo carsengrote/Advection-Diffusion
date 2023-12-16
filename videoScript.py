@@ -2,7 +2,7 @@ import os
 import sys 
 import numpy as np
 
-def worker(startIndex,endIndex,dt, tId):
+def worker(startIndex,endIndex,dt, tId, l,h):
     
     time = startIndex * dt
     for i in range(startIndex, endIndex + 1):
@@ -15,7 +15,7 @@ def worker(startIndex,endIndex,dt, tId):
             outStr = "0" + outStr
 
         # Making plots
-        cmd = "gnuplot -e \"set terminal jpeg; set view map; set cbrange [0:0.005]; set title 't="+str(round(time,1)) + "'; splot 'out' matrix index " + str(int(i)) + " with pm3d \"> ./images/fr"+ outStr + "\.jpeg"
+        cmd = "gnuplot -e \"set terminal jpeg; set view map;  set cbrange [0:1]; set xrange [" + str(-1*l) + ":" + str(l) + "]; set yrange ["+ str(-1*h)+ ":0]; set cblabel 'C' rotate by 360; set title 't = "+str(round(time,1)) + " s'; splot 'out' nonuniform matrix index " + str(int(i)) + " with pm3d \"> ./images/fr"+ outStr + "\.jpeg"
         
         os.system(cmd)
         time = time + dt
@@ -24,6 +24,9 @@ def worker(startIndex,endIndex,dt, tId):
 
 numImages = int(sys.argv[1]) # First CLA is total number of images
 dt = float(sys.argv[2]) # Second CLA is time step
+L = float(sys.argv[3])
+H = float(sys.argv[4])
+l = L/2
 
 if (not os.path.isdir("images")):
     os.system("mkdir images")
@@ -42,9 +45,9 @@ for t in range(0,numThreads):
     j = os.fork()
     if j == 0: 
         if t == numThreads-1:
-            worker(curIndex, numImages, dt, t)
+            worker(curIndex, numImages, dt, t, l,H)
         else:
-            worker(curIndex, curIndex+imagesPerThread - 1, dt,t)
+            worker(curIndex, curIndex+imagesPerThread - 1, dt,t, l, H)
         os._exit(0)
     
     curIndex = curIndex + imagesPerThread
