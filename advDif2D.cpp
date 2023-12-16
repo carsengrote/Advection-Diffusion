@@ -23,12 +23,28 @@ double Ub = 1; // cm per second
 double D = 0.0185; // cm squared per second
 
 // Used to print out a vertical cross section of the conentration
-void printVertical(double **c){
-   for (int k = 1; k < H; k++){
-       for (int i = 1; i < L-1; i++){
-           printf("%f ", c[i][k]);
-       }
-       printf("\n");
+void printVertical(double **c, double dx){
+    printf("%d ", L-2);
+    std::array<double,2> coord = convert(1,0,dx);
+    double x = coord[0];
+    printf("%f ", x - .5*dx);
+    x = x + dx + .5*dx;
+    for (int i = 2; i < L - 2; i++){
+        printf("%f ",x);
+        x = x + dx;
+    }
+    x = x + .5*dx;
+    printf("%f \n", x);
+    
+    coord = convert(0, 1, dx);
+    double y = coord[1];
+    for (int k = 1; k < H; k++){
+        printf("%f ",y);
+        y = y + dx;
+        for (int i = 1; i < L-1; i++){
+            printf("%f ", c[i][k]);
+        }
+        printf("\n");
    }
    printf("\n");
 }
@@ -106,7 +122,8 @@ void start(double LL, double HH, double dx, double T)
     
     double t_total = 0.0;
     struct ptrStruct ptrs;
-    printVertical(c); // print initial conditions 
+    printVertical(c,dx); // print initial conditions 
+    //printf("%f %f %f\n",t_total,avgC(c),totalC(c));
     int E = 0; // Switch for Eulers step first
     while (t_total < T)
     {
@@ -120,10 +137,9 @@ void start(double LL, double HH, double dx, double T)
         c = ptrs.newC;
         cPrimeLast = ptrs.lastCprime;
         t_total += dt;
-        //printf("%f\n",avgC(c));  
-        printVertical(c);
+        //printf("%f %f %f\n",t_total,avgC(c), totalC(c));  
+        printVertical(c,dx);
     }
-    //printf("%f, %f\n",t_total, c[L/2+10][H/2-10]);
     
 }
 
@@ -144,7 +160,7 @@ double CFL(double dx, double **ux, double ** uz)
 
     // Returning the smaller CFL condition between advection and diffusion
     // For small diffusion, advection CFL is normally much smaller
-    return .75*std::min(dx/maxU, (dx*dx)/(2*D));
+    return .75*std::min(dx/maxU, (dx*dx)/(D));
 }
 
 // Given indicies, returns physical x and z coordinates
@@ -190,7 +206,7 @@ double initializeC(int i, int k, double dx)
     double r = (((double) rand() / (RAND_MAX))*2) - 1; // Random number in
     r = 0;                                              // [-1,1]
     int a = (i + k) * dx * 0;
-    return 0.004 + 0.004*(0.2)*r + 0*a; // const for now, grams per liter? 
+    return 1 + .75*r  + 0*a;
 }
 
 double initializeUx(int i, int k, double dx, double LL, double HH)
@@ -200,7 +216,7 @@ double initializeUx(int i, int k, double dx, double LL, double HH)
     double z = coord[1];
     double ux;
     //ux = LL * (1.0/(2.0*HH)) * (1.0/((2.0*N)-1)) * cos((2.0*N - 1.0)*(M_PI)*(2.0*x - LL/2.0)*(1.0/LL)) * cos(M_PI*(z/HH));
-    ux = LL * (1/(2*HH*N)) * cos((2*M_PI*N)*((x+LL/2)/LL) + M_PI/2) * cos((M_PI*z)/HH);
+    ux =  - Ub * LL * (1/(2*HH*N)) * sin((2*M_PI*N)*((x+LL/2)/LL)) * cos((M_PI*z)/HH);
     return ux;
 }
 
@@ -212,7 +228,7 @@ double initializeUz(int i, int k, double dx, double LL, double HH)
     double z = coord[1];
 
     // double uz = sin((2.0*N-1.0)*(2.0*x - LL/2.0)*(M_PI/LL)) * sin(M_PI*(z/HH));
-    double uz = sin((2*M_PI*N)*((x+LL/2)/LL) + M_PI/2) * sin((z*M_PI)/HH);
+    double uz = Ub * cos((2*M_PI*N)*((x+LL/2)/LL)) * sin((z*M_PI)/HH);
     return uz;
 }
 
