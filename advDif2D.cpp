@@ -5,9 +5,8 @@
 #include "advDif2D.hh"
 #include <cmath>
 #include <iostream>
-#include <random>
 #include <omp.h>
-
+#include <random>
 
 struct ptrStruct {
     double **newC;
@@ -57,7 +56,6 @@ void start(double LL, double HH, double dx, double T) {
 
     computeC(c, dx);
     enforceBoundary(c);
-    std::cout << 0 << "\t" << totalC(c) << std::endl;
 
     // initializing the velocity field
     double **ux = allocate2DArray();
@@ -73,7 +71,7 @@ void start(double LL, double HH, double dx, double T) {
     double t_total = 0.0;
     struct ptrStruct ptrs;
     // printVertical(c, dx); // print initial conditions
-    printf("%f %f %f\n", t_total, avgC(c), totalC(c)); // print initial conditions
+    printf("%f \t %f \t %f\n", t_total, avgC(c), totalC(c)); // print initial conditions
 
     int E = 0; // Switch for Eulers step first
     while (t_total < T) {
@@ -88,7 +86,7 @@ void start(double LL, double HH, double dx, double T) {
         cPrimeLast = ptrs.lastCprime;
         t_total += dt;
         //  printVertical(c, dx);
-        printf("%f %f %f\n", t_total, avgC(c), totalC(c));
+        printf("%f \t %f \t %f\n", t_total, avgC(c), totalC(c));
     }
 }
 
@@ -223,26 +221,15 @@ double updateC_cell(double **c, double **ux, double **uz, int i, int k, double d
     //*/
 
     // updated way to calculate advection; right now if it were a closed system, c will conserve
-    //*
     std::array<double, 2> u = getU(ux, uz, i, k);
     double c_east = getC(c, i + 1, k);
     double c_west = getC(c, i - 1, k);
     double c_top = getC(c, i, k + 1);
     double c_bot = getC(c, i, k - 1);
-
-    if (u[0] < 0) {
-        x_ad = u[0] * c_east - u[0] * c_west;
-    } else {
-        x_ad = u[0] * c_west - u[0] * c_east;
-    }
-
-    if (u[1] < 0) {
-        z_ad = u[1] * c_top - u[1] * c_bot;
-    } else {
-        z_ad = u[1] * c_bot - u[1] * c_top;
-    }
-
-    //*/
+    //in the scheme, it should be u.*grad(c), so ad = u_{i,j}.*1/2(u_{i,j+1}-u_{i,j-1})
+    //we dont need to compute u_{i,j+1} and u_{i,j-1}
+    x_ad = u[0] * c_east - u[0] * c_west;
+    z_ad = u[1] * c_top - u[1] * c_bot;
 
     x_df = -getC(c, i - 1, k) + 2 * getC(c, i, k) - getC(c, i + 1, k);
     z_df = -getC(c, i, k - 1) + 2 * getC(c, i, k) - getC(c, i, k + 1);
